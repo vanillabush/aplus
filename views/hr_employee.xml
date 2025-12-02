@@ -1,0 +1,35 @@
+<odoo>
+
+    <record id="hr_employee" model="ir.ui.view">
+        <field name="name">hr.employee</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form" />
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='coach_id']" position="after">
+                <field name="staff_id"/>
+                <field name="tax_payer_number"/>
+            </xpath>
+
+             <xpath expr="//field[@name='category_ids']" position="after">
+                <field name="rsa_pin"/>
+                <field name="pfa_name"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="action_generate_payment_schedule_report" model="ir.actions.server">
+        <field name="name">Payment Schedule Report</field>
+        <field name="model_id" ref="hr.model_hr_employee"/>
+        <field name="binding_model_id" ref="hr.model_hr_employee"/>
+        <field name="state">code</field>
+        <field name="code">
+            action = model.action_payment_schedule_report()
+        </field>
+    </record>
+
+    <menuitem id="payment_schedule" 
+            parent="hr.hr_menu_hr_reports" 
+            name="Payment Schedule" 
+            action="action_generate_payment_schedule_report"/>
+
+</odoo>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="client_stock_report_action_server" model="ir.actions.server">
+        <field name="name">Custom Inventory Report</field>
+        <field name="model_id" ref="aplus.model_stock_picking"/>
+        <field name="binding_model_id" ref="aplus.model_stock_picking"/>
+        <field name="state">code</field>
+        <field name="code"> action = model.action_warehouse_data()</field>
+    </record>
+
+    <menuitem id="menu_client_stock_report"
+              name="Custom Inventory  Report- By Warehouse"
+              parent="stock.menu_warehouse_report"
+              action="client_stock_report_action_server"/>
+</odoo>

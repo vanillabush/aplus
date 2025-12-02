@@ -1,0 +1,86 @@
+<odoo>
+
+    <record id="stock_management_report_form_view" model="ir.ui.view">
+        <field name="name">Form view</field>
+        <field name="model">stock.management.report.wizard</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="start_date"/>
+                        </group>
+                        <group>
+                            <field name="end_date"/>
+                        </group>
+                    </group>
+                    <footer>
+                        <button class="btn btn-primary" type="object" name="download">Print Report</button>
+                        <button string="Cancel" class="btn-secondary" special="cancel"/>
+                    </footer>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="stock_management_report_action_view" model="ir.actions.act_window">
+        <field name="name">Client Stock Report</field>
+        <field name="res_model">stock.management.report.wizard</field>
+        <field name="target">new</field>
+        <field name="view_mode">form</field>
+        <field name="context">
+            {'default_report_type':'client_stock_report'}
+        </field>
+    </record>
+
+    <record id="inventory_held_wizard" model="ir.actions.act_window">
+        <field name="name">Inventory Held wizard</field>
+        <field name="res_model">stock.management.report.wizard</field>
+        <field name="target">new</field>
+        <field name="view_mode">form</field>
+        <field name="context">
+            {'default_report_type':'inventory_held_report'}
+        </field>
+    </record>
+
+    <record id="pfa_pension_report_action" model="ir.actions.act_window">
+        <field name="name">PFA Pension Report</field>
+        <field name="res_model">stock.management.report.wizard</field>
+        <field name="target">new</field>
+        <field name="view_mode">form</field>
+        <field name="context">
+            {'default_report_type':'pfa_pension_report'}
+        </field>
+    </record>
+
+     <record id="generate_employee_paye_report" model="ir.actions.act_window">
+        <field name="name">Employee Paye Report</field>
+        <field name="res_model">stock.management.report.wizard</field>
+        <field name="target">new</field>
+        <field name="view_mode">form</field>
+        <field name="context">
+            {'default_report_type':'employee_paye_report'}
+        </field>
+    </record>
+
+    <record id="payroll_schedule_report_action" model="ir.actions.act_window">
+        <field name="name">Payroll Schedule Report</field>
+        <field name="res_model">stock.management.report.wizard</field>
+        <field name="target">new</field>
+        <field name="view_mode">form</field>
+        <field name="context">
+            {'default_report_type':'payroll_schedule_report'}
+        </field>
+    </record>
+
+    <menuitem id="payroll_schedule_report_menu" parent="hr_payroll.menu_hr_payroll_report" name="Payroll Schedule Report" action="payroll_schedule_report_action"/>
+
+    <menuitem id="employees_details" parent="hr_payroll.menu_hr_payroll_report" name="Employees Paye Report" action="generate_employee_paye_report"/>
+    
+    <menuitem id="pfa_pension_report_menu" parent="hr_payroll.menu_hr_payroll_report" name="PFA Pension Report" action="pfa_pension_report_action"/>
+
+    <menuitem id="stock_reserved_report_menu" parent="stock.menu_warehouse_report" name="Custom Inventory Report- Held For Client" action="inventory_held_wizard"/>
+
+    <menuitem id="stock_report_menu" parent="stock.menu_warehouse_report" name="Client Stock Report" action="stock_management_report_action_view"/>
+
+</odoo>
