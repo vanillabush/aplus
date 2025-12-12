@@ -93,7 +93,7 @@ class StockManagement(models.TransientModel):
 
         file_content = self._generate_employee_paye_report(employees_data)
         
-        self.file_name = f"PAYE Report-{fields.Date.today()}.xlsx"
+        self.file_name = f"Employee PAYE Report-{fields.Date.today()}.xlsx"
         self.file_data = base64.b64encode(file_content)
         
         return {
@@ -254,11 +254,6 @@ class StockManagement(models.TransientModel):
 
         for payslip in hr_payslips: 
             emp_id = payslip['emp_id']
-            employee_contribution = employer_contribution = 0
-            if payslip['code'] == "EMP CONTRO":
-                employer_contribution = payslip['amount']
-            if payslip['code'] == "EMP-CONTRO":
-                employee_contribution = payslip['amount']
 
             if emp_id not in employee_dict: #check the id for repetation
                 employee_dict[emp_id] = {
@@ -268,13 +263,17 @@ class StockManagement(models.TransientModel):
                     "rsa_pin": payslip['rsa_pin'] or '',
                     "pfa_name": payslip['pfa_name'] or '',
                     "employer_voluntary": payslip['employer_voluntary'] or '',
-                    "employee_voluntary": payslip['employee_voluntary'] or ''
-                    
+                    "employee_voluntary": payslip['employee_voluntary'] or '',
+                    "employer_pension":0,
+                    "employee_pension":0
                 }
             employee_data = employee_dict[emp_id] # {id:value, staff_id: value}
 
-            employee_data["employer_contribution"] = employer_contribution
-            employee_data["employee_contribution"] = employee_contribution
+            if payslip['code'] == "EMP":
+                employee_data["employee_pension"] += payslip['amount']
+
+            if payslip['code'] == 'EMYP':
+                employee_data["employer_pension"] += payslip['amount']
 
         employees_data = list(employee_dict.values()) #[{id:value,etc...},etc..]    
 
@@ -405,14 +404,14 @@ class StockManagement(models.TransientModel):
             total_contribution = 0
 
             cell_f = ws.cell(row=current_row, column=6)
-            cell_f.value = emp['employer_contribution'] or ''
-            total_contribution += int(emp['employer_contribution'])
+            cell_f.value = emp['employer_pension'] or ''
+            total_contribution += int(emp['employer_pension'])
             cell_f.alignment = left_alignment
             cell_f.border = thin_border
 
             cell_g = ws.cell(row=current_row, column=7)
-            cell_g.value = emp['employee_contribution'] or ''
-            total_contribution += int(emp['employee_contribution'])
+            cell_g.value = emp['employee_pension'] or ''
+            total_contribution += int(emp['employee_pension'])
             cell_g.alignment = left_alignment
             cell_g.border = thin_border
 
@@ -482,7 +481,6 @@ class StockManagement(models.TransientModel):
 
         for delivery in deliveries:
             customer = delivery.sale_id.partner_id.name or ''
-
             for move in delivery.move_ids_without_package:
 
                 product_id = move.product_id.id
@@ -534,7 +532,7 @@ class StockManagement(models.TransientModel):
 
         wb = Workbook()
         ws = wb.active
-        ws.title = "Client Stock"
+        ws.title = "Inventory Held For A Client Report"
 
         # ---------- Styles ----------
         bold = Font(bold=True)
@@ -553,12 +551,12 @@ class StockManagement(models.TransientModel):
 
         # ---------- Header Row ----------
         headers = [
-            "Product Code",
+            "Product Name",
             "Product Description",
             "Quantity Available in Stock",
             "Booked for Client",
             "Net Balance",
-            "Client Names"
+            "Client's Name"
         ]
 
         col = 1
@@ -577,12 +575,12 @@ class StockManagement(models.TransientModel):
         for product_id in product_ids_demand.keys():
 
             product = product_obj.browse(product_id)
-
-            default_code = product.default_code or ""
+            
             description = product.description_sale or ""
             qty_available = int(product_ids_available[product_id]['available'])
             booked_qty = int(product_ids_demand[product_id]['demand'])
             net_balance = qty_available - booked_qty
+            display_name = f"[{product.default_code}] - {product.name}" if product.default_code else product.name
 
             # Prepare client list
             customers = []
@@ -591,10 +589,9 @@ class StockManagement(models.TransientModel):
 
             customers_txt = "/".join(customers)
 
-
             # ---------- Write row ----------
             data = [
-                default_code,
+                display_name,
                 description,
                 qty_available,
                 booked_qty,
@@ -605,7 +602,7 @@ class StockManagement(models.TransientModel):
             for i, value in enumerate(data, 1):
                 cell = ws.cell(row=row, column=i, value=value)
                 cell.border = border
-                cell.alignment = left if i <= 2 else center
+                cell.alignment = center if i <= 2 else center
 
                 # Red for negative or booked > 0
                 if i == 4 and booked_qty > 0:
@@ -726,6 +723,7 @@ class StockManagement(models.TransientModel):
         ws.column_dimensions['D'].width = 12
         ws.column_dimensions['E'].width = 12
         ws.column_dimensions['F'].width = 60
+        ws.column_dimensions['G'].width = 60
 
         main_header = ws['A1']
         main_header.value = "CLIENTS' STOCK LIST"
@@ -734,7 +732,7 @@ class StockManagement(models.TransientModel):
         main_header.alignment = center_alignment
         main_header.border = thin_border
 
-        ws['A2'].value = "Product Code"
+        ws['A2'].value = "Product Name"
         ws['A2'].fill = column_header_fill
         ws['A2'].font = column_header_font
         ws['A2'].alignment = center_alignment
@@ -781,6 +779,12 @@ class StockManagement(models.TransientModel):
         
         ws['F3'].value = ""
         ws['F3'].border = thin_border
+        
+        ws['G2'].value = "Delivery Order"
+        ws['G2'].fill = column_header_fill
+        ws['G2'].font = column_header_font
+        ws['G2'].alignment = center_alignment
+        ws['G2'].border = thin_border
 
         total_owed = 0
         total_available = 0
@@ -795,7 +799,7 @@ class StockManagement(models.TransientModel):
             
             if category not in products_by_category:
                 products_by_category[category] = []
-            
+
             customer_list = []
             for customer_name, count in customers_dict.get(product_id, {}).items():
                 if count > 1:
@@ -803,20 +807,32 @@ class StockManagement(models.TransientModel):
                 else:
                     customer_list.append(customer_name)
             
+            delivery_order = []
+            pickings = self.env['stock.picking'].search([       
+                ('sale_id.state', '=', 'sale'),
+                ('product_id','=',product_id),
+                ('state','!=','done')])
+            for picking in pickings:
+                delivery_order.append(picking.name)
+
+            display_name = f"[{product.default_code}] - {product.name}" if product.default_code else product.name
+
             products_by_category[category].append({
                 'product': product,
+                'default_code': product.default_code or "",
+                'name': display_name,
                 'product_id': product_id,
-                'default_code': product.default_code or '',
-                'name': product.name,
                 'demand': product_ids_demand[product_id]['demand'],
                 'available': product_ids_available[product_id]['available'],
+                'delivery_orders': ','.join(delivery_order),
                 'customers': ', '.join(customer_list)
             })
 
+        
         current_row = 4
         
         for category in sorted(products_by_category.keys()):
-            ws.merge_cells(f'A{current_row}:F{current_row}')
+            ws.merge_cells(f'A{current_row}:G{current_row}')
             category_cell = ws[f'A{current_row}']
             category_cell.value = category.upper()
             category_cell.fill = category_fill
@@ -835,14 +851,9 @@ class StockManagement(models.TransientModel):
                 total_net_balance += net_balance
     
                 cell_a = ws.cell(row=current_row, column=1)
-                cell_a.value = item['default_code']
+                cell_a.value = item['name']
                 cell_a.alignment = left_alignment
                 cell_a.border = thin_border
-                
-                cell_b = ws.cell(row=current_row, column=2)
-                cell_b.value = item['name']
-                cell_b.alignment = left_alignment
-                cell_b.border = thin_border
                 
                 cell_c = ws.cell(row=current_row, column=3)
                 cell_c.value = demand
@@ -869,7 +880,12 @@ class StockManagement(models.TransientModel):
                 cell_f.value = item['customers']
                 cell_f.alignment = center_alignment
                 cell_f.border = thin_border
-                cell_f.font = Font(color="FF0000")
+
+                cell_g = ws.cell(row=current_row, column=7)
+                cell_g.value = item['delivery_orders']
+                cell_g.alignment = center_alignment
+                cell_g.border = thin_border
+                cell_g.font = Font(color="FF0000")
                 
                 current_row += 1
             current_row += 1
@@ -891,7 +907,7 @@ class StockManagement(models.TransientModel):
         ws['E1'].font = main_header_font
         ws['E1'].alignment = center_alignment
         ws['E1'].border = thin_border
-        
+
         excel_file = io.BytesIO()
         wb.save(excel_file)
         excel_file.seek(0)
@@ -905,7 +921,7 @@ class StockManagement(models.TransientModel):
         if self.start_date and self.end_date:
             query = """
                 select hr_pay.id as id, hr_emp.id as emp_id,hr_dep.name as dep_name, hr_emp.staff_id as staff_id, hr_emp.name as emp_name, 
-                hr_pay_line.name as col_name, hr_pay_line.amount as amount
+                hr_pay_line.name as col_name,hr_pay_line.code as code, hr_pay_line.amount as amount
                 from hr_payslip as hr_pay 
                 left join hr_employee as hr_emp on hr_pay.employee_id = hr_emp.id
                 full join hr_department as hr_dep on hr_emp.department_id = hr_dep.id 
@@ -916,7 +932,7 @@ class StockManagement(models.TransientModel):
         else:
             query = """
                 select hr_pay.id as id, hr_emp.id as emp_id, hr_dep.name as dep_name,hr_emp.staff_id as staff_id, hr_emp.name as emp_name, 
-                hr_pay_line.name as col_name, hr_pay_line.amount as amount
+                hr_pay_line.name as col_name,hr_pay_line.code as code, hr_pay_line.amount as amount
                 from hr_payslip as hr_pay 
                 left join hr_employee as hr_emp on hr_pay.employee_id = hr_emp.id
                 full join hr_department as hr_dep on hr_emp.department_id = hr_dep.id
@@ -931,7 +947,12 @@ class StockManagement(models.TransientModel):
         columns = set()
 
         for data in hr_payslips:
+            if data['code'] == "LEAVE":
+                continue
+            
             columns.add(data['col_name'])
+
+        columns = sorted(columns)
 
         employees = []
         employee_dict = {} # {emp_id(1): {id:value, staff_id:value, etc..}}

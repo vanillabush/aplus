@@ -19,7 +19,7 @@
   
     'data': [
         'security/ir.model.access.csv',
-
+        
         'views/stock_picking.xml',
         'views/hr_employee.xml',
         'views/hr_contract.xml',

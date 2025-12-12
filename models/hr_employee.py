@@ -19,21 +19,40 @@ class HrEmployee(models.Model):
     @api.model
     def action_payment_schedule_report(self):
         query = """
-            select hr_emp.id,hr_emp.staff_id,hr_emp.name as emp_name,hr_dep.name as dep_name,r_p_b.acc_number,r_b.name as bank_name from hr_employee as hr_emp 
+            select hr_emp.id,hr_emp.staff_id,hr_emp.name as emp_name,hr_dep.name as dep_name,r_p_b.acc_number,r_b.name as bank_name,hr_pay_line.name as col_name, hr_pay_line.amount as amount
+            from hr_employee as hr_emp 
             left join hr_department as hr_dep on hr_emp.department_id = hr_dep.id 
             left join res_partner_bank as r_p_b on r_p_b.id = hr_emp.bank_account_id
             left join res_bank as r_b on r_b.id = r_p_b.bank_id
+            left join hr_payslip as hr_pay on hr_emp.id = hr_pay.employee_id
+            left join hr_payslip_line as hr_pay_line on hr_pay.id = hr_pay_line.slip_id
         """
         self.env.cr.execute(query)
-        employees = self.env.cr.dictfetchall()
-
+        employees_data = self.env.cr.dictfetchall()
+       
+        employees = {}
+        for emp in employees_data:
+            if  emp['id'] not in employees:
+                employees[emp['id']] = {
+                    'staff_id' : emp['staff_id'],
+                    'emp_name' : emp['emp_name'],
+                    'dep_name' : emp['dep_name'],
+                    'acc_number' : emp['acc_number'],
+                    'bank_name' : emp['bank_name'],
+                    'net' : 0
+                }
+            else:
+                if emp['col_name'] == "Net Salary":
+                    employees[emp['id']]['net'] +=  emp['amount'] 
+                
+            
         file_content = self._generate_payment_report(employees)
 
-        file_name = f"PAYE Report-{fields.Date.today()}.xlsx"
+        file_name = f"Payment Schedule Report-{fields.Date.today()}.xlsx"
         file_data = base64.b64encode(file_content)
         
         employee_id = False
-        for emp in employees:
+        for emp in employees_data:
             if emp['id']:
                 employee_id = emp['id']
                 break
@@ -125,39 +144,39 @@ class HrEmployee(models.Model):
         current_row = 2
         total_net_pay = 0
 
-        for emp in employees:
+        for key,value in employees.items():
             cell_a = ws.cell(row=current_row, column=1)
             cell_a.value = cnt
             cell_a.alignment = right_alignment
             cell_a.border = thin_border
             
             cell_b = ws.cell(row=current_row, column=2)
-            cell_b.value = emp['staff_id'] or ''
+            cell_b.value = value['staff_id'] 
             cell_b.alignment = left_alignment
             cell_b.border = thin_border
             
             cell_c = ws.cell(row=current_row, column=3)
-            cell_c.value = emp['emp_name'] or ''
+            cell_c.value = value['emp_name'] 
             cell_c.alignment = left_alignment
             cell_c.border = thin_border
 
             cell_d = ws.cell(row=current_row, column=4)
-            cell_d.value = emp['dep_name']['en_US'] if emp['dep_name'] else '' 
+            cell_d.value = value['dep_name']['en_US'] if value['dep_name'] else '' 
             cell_d.alignment = left_alignment
             cell_d.border = thin_border
 
             cell_e = ws.cell(row=current_row, column=5)
-            cell_e.value = emp['bank_name'] or ''
+            cell_e.value = value['bank_name'] 
             cell_e.alignment = right_alignment
             cell_e.border = thin_border
             
             cell_f = ws.cell(row=current_row, column=6)
-            cell_f.value = emp['acc_number'] or ''
+            cell_f.value = value['acc_number'] 
             cell_f.alignment = right_alignment
             cell_f.border = thin_border
             
             cell_g = ws.cell(row=current_row, column=7)
-            cell_g.value = 0
+            cell_g.value = value['net']
             cell_g.alignment = right_alignment
             cell_g.border = thin_border
 

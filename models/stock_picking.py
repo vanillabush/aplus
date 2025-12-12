@@ -16,9 +16,10 @@ class StockPicking(models.Model):
 
     @api.model
     def action_warehouse_data(self):
+        sale_orders = self.env["sale.order"].search([('state', '=', 'sale')])
         pickings = self.env["stock.picking"].search([
-            ('state', '!=', 'done'),
-            ('sale_id.state', '=', 'sale'),  
+        ('sale_id', 'in', sale_orders.ids),
+        ('state', '!=', 'done'),
         ])
         product_data = {}
         warehouse_list = self.env["stock.warehouse"].search([], order="sequence asc")
@@ -40,16 +41,18 @@ class StockPicking(models.Model):
                     product_data[pid] = {
                         "product": product,
                         "description": product.description_sale or "",
+                        "product_name":product.name or "",
                         "default_code": product.default_code or "",
-                        "clients": set(),
+                        "delivery_order": set(),
                         "client_stock": 0,
                         "warehouses": {w.id: 0 for w in warehouse_list},
                     }
 
                 product_data[pid]["client_stock"] += owed_qty
-                customer_name = picking.sale_id.partner_id.name
-                if customer_name:
-                    product_data[pid]["clients"].add(customer_name)
+    
+                delivery_order = picking.name
+                if delivery_order:
+                    product_data[pid]["delivery_order"].add(delivery_order)
 
         for pid, pdata in product_data.items():
             product = pdata["product"]
@@ -120,9 +123,9 @@ class StockPicking(models.Model):
             ws.cell(row=3, column=col).border = thick_black
 
         headers = [
-            "Product Code",
+            "Product Name",
             "Product Description",
-            "Client Names",
+            "Delivery Orders",
         ]
 
         # add warehouse names (in the sorted sequence order)
@@ -145,14 +148,19 @@ class StockPicking(models.Model):
             # values in EXACT warehouse order
             warehouse_values = [pdata["warehouses"][w.id] for w in warehouse_list]
 
-            client_names = "/".join(sorted(list(pdata["clients"])))
+            delivery_orders = ",".join(sorted(list(pdata["delivery_order"])))
             total_wh = sum(warehouse_values)
             net_balance = total_wh - pdata["client_stock"]
 
+            name = (f"[{pdata['default_code']}] - {pdata['product_name']}" 
+                            if pdata['default_code']
+                            else pdata['product_name'])
+            pdata["name"] = name
+
             row_data = [
-                pdata["default_code"],
+                pdata["name"],
                 pdata["description"],
-                client_names,
+                delivery_orders,
             ]
 
             # warehouse columns (exact order)
@@ -168,7 +176,7 @@ class StockPicking(models.Model):
             for col, val in enumerate(row_data, start=1):
                 cell = ws.cell(row=row, column=col, value=val)
                 cell.border = border
-                cell.alignment = left
+                cell.alignment = center
 
             row += 1
 
@@ -185,8 +193,8 @@ class StockPicking(models.Model):
                 except:
                     pass
 
-            # Give padding of +2 for nicer spacing
-            adjusted_width = max_length + 2
+            # Give padding of +3 for nicer spacing
+            adjusted_width = max_length + 3
             ws.column_dimensions[col_letter].width = adjusted_width
 
         # Return file
