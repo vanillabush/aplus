@@ -544,7 +544,7 @@ class StockManagement(models.TransientModel):
         )
 
         # ---------- Main Title ----------
-        ws.merge_cells('A1:F1')
+        ws.merge_cells('A1:G1')
         ws['A1'].value = "Custom Report that shows inventory held for a client (Client Stock)"
         ws['A1'].font = Font(bold=True, size=12)
         ws['A1'].alignment = center
@@ -552,6 +552,7 @@ class StockManagement(models.TransientModel):
         # ---------- Header Row ----------
         headers = [
             "Product Name",
+            "Product Category",
             "Product Description",
             "Quantity Available in Stock",
             "Booked for Client",
@@ -576,6 +577,7 @@ class StockManagement(models.TransientModel):
 
             product = product_obj.browse(product_id)
             
+            category = product.categ_id.name or ''
             description = product.description_sale or ""
             qty_available = int(product_ids_available[product_id]['available'])
             booked_qty = int(product_ids_demand[product_id]['demand'])
@@ -592,6 +594,7 @@ class StockManagement(models.TransientModel):
             # ---------- Write row ----------
             data = [
                 display_name,
+                category,
                 description,
                 qty_available,
                 booked_qty,
@@ -644,6 +647,7 @@ class StockManagement(models.TransientModel):
         product_ids_demand = dict() # {product_id: {demand:value}}
         product_ids_available = dict() # {product_id: {available:value}}
         deliveries = []
+        sale_order_dict = dict()
         customers_dict = dict()  # {product_id: {customer_name: count}}
 
         for record in sale_order:
@@ -660,6 +664,7 @@ class StockManagement(models.TransientModel):
 
         for delivery in deliveries:
             customer_name = delivery.sale_id.partner_id.name
+            sale_order = delivery.sale_id.name
             for move in delivery.move_ids:
                 product_id = move.product_id.id
                 if product_id in product_ids_demand:
@@ -668,17 +673,20 @@ class StockManagement(models.TransientModel):
                     product_ids_demand[product_id] = {'demand': move.product_uom_qty}
                     product_ids_available[product_id] = {'available': 0}
                     customers_dict[product_id] = {}
-
+                    sale_order_dict[product_id] = set()
+                
                 if customer_name in customers_dict[product_id]:
                     customers_dict[product_id][customer_name] += 1
                 else:
                     customers_dict[product_id][customer_name] = 1
 
+                sale_order_dict[product_id].add(sale_order)
+
         for product_id in product_ids_available.keys():
             product = product_product.browse(product_id)
             product_ids_available[product_id]['available'] = int(product.qty_available)
 
-        file_content = self._generate_client_stock_report(product_ids_demand, product_ids_available, customers_dict)
+        file_content = self._generate_client_stock_report(product_ids_demand, product_ids_available, customers_dict, sale_order_dict)
 
         self.file_data = base64.b64encode(file_content)
 
@@ -690,7 +698,7 @@ class StockManagement(models.TransientModel):
             'target': 'self',
         }
 
-    def _generate_client_stock_report(self, product_ids_demand, product_ids_available, customers_dict):
+    def _generate_client_stock_report(self, product_ids_demand, product_ids_available, customers_dict, sale_order_dict):
         wb = Workbook()
         ws = wb.active
         ws.title = "Client Stock Report"
@@ -780,7 +788,7 @@ class StockManagement(models.TransientModel):
         ws['F3'].value = ""
         ws['F3'].border = thin_border
         
-        ws['G2'].value = "Delivery Order"
+        ws['G2'].value = "Sale Order"
         ws['G2'].fill = column_header_fill
         ws['G2'].font = column_header_font
         ws['G2'].alignment = center_alignment
@@ -806,14 +814,6 @@ class StockManagement(models.TransientModel):
                     customer_list.append(f"{customer_name}({count})")
                 else:
                     customer_list.append(customer_name)
-            
-            delivery_order = []
-            pickings = self.env['stock.picking'].search([       
-                ('sale_id.state', '=', 'sale'),
-                ('product_id','=',product_id),
-                ('state','!=','done')])
-            for picking in pickings:
-                delivery_order.append(picking.name)
 
             display_name = f"[{product.default_code}] - {product.name}" if product.default_code else product.name
 
@@ -824,7 +824,7 @@ class StockManagement(models.TransientModel):
                 'product_id': product_id,
                 'demand': product_ids_demand[product_id]['demand'],
                 'available': product_ids_available[product_id]['available'],
-                'delivery_orders': ','.join(delivery_order),
+                'sale_order': ','.join(sale_order_dict.get(product_id,[])),
                 'customers': ', '.join(customer_list)
             })
 
@@ -882,7 +882,7 @@ class StockManagement(models.TransientModel):
                 cell_f.border = thin_border
 
                 cell_g = ws.cell(row=current_row, column=7)
-                cell_g.value = item['delivery_orders']
+                cell_g.value = item['sale_order']
                 cell_g.alignment = center_alignment
                 cell_g.border = thin_border
                 cell_g.font = Font(color="FF0000")
@@ -921,22 +921,28 @@ class StockManagement(models.TransientModel):
         if self.start_date and self.end_date:
             query = """
                 select hr_pay.id as id, hr_emp.id as emp_id,hr_dep.name as dep_name, hr_emp.staff_id as staff_id, hr_emp.name as emp_name, 
-                hr_pay_line.name as col_name,hr_pay_line.code as code, hr_pay_line.amount as amount
+                hr_pay_line.name as col_name,hr_pay_line.code as code, hr_pay_line.amount as amount,hr_rule.sequence as rule_seq,hr_cat.code as cat_code,
+                hr_cat.name as cat_name
                 from hr_payslip as hr_pay 
                 left join hr_employee as hr_emp on hr_pay.employee_id = hr_emp.id
                 full join hr_department as hr_dep on hr_emp.department_id = hr_dep.id 
                 left join hr_payslip_line as hr_pay_line on hr_pay.id = hr_pay_line.slip_id
+                left join hr_salary_rule as hr_rule on hr_pay_line.salary_rule_id = hr_rule.id
+                left join hr_salary_rule_category as hr_cat on hr_rule.category_id = hr_cat.id
                 where hr_pay.state = 'done' and hr_pay.date_from >= %s and hr_pay.date_to <= %s
             """
             params = (self.start_date, self.end_date)
         else:
             query = """
                 select hr_pay.id as id, hr_emp.id as emp_id, hr_dep.name as dep_name,hr_emp.staff_id as staff_id, hr_emp.name as emp_name, 
-                hr_pay_line.name as col_name,hr_pay_line.code as code, hr_pay_line.amount as amount
+                hr_pay_line.name as col_name,hr_pay_line.code as code, hr_pay_line.amount as amount,hr_rule.sequence as rule_seq,hr_cat.code as cat_code,
+                hr_cat.name as cat_name
                 from hr_payslip as hr_pay 
                 left join hr_employee as hr_emp on hr_pay.employee_id = hr_emp.id
                 full join hr_department as hr_dep on hr_emp.department_id = hr_dep.id
                 left join hr_payslip_line as hr_pay_line on hr_pay.id = hr_pay_line.slip_id
+                left join hr_salary_rule as hr_rule on hr_pay_line.salary_rule_id = hr_rule.id
+                left join hr_salary_rule_category as hr_cat on hr_rule.category_id = hr_cat.id
                 where hr_pay.state = 'done'
             """
             params = ()
@@ -945,14 +951,26 @@ class StockManagement(models.TransientModel):
         hr_payslips = self.env.cr.dictfetchall()
 
         columns = set()
+        earning = {}
+        deduction = {}
 
         for data in hr_payslips:
-            if data['code'] == "LEAVE":
+            if data['code'] in ('LEAVE','EMYP'):
                 continue
             
-            columns.add(data['col_name'])
+            col =data['col_name']
+            seq = data.get('rule_seq') or 0
+            category_code = data.get('cat_code') 
 
-        columns = sorted(columns)
+            if category_code in ('DED','TAX'):
+                deduction[col] = seq
+            
+            else:
+                earning[col] = seq 
+
+        earning_column = sorted(earning.keys())
+        deduction_column = sorted(deduction.keys())
+        columns = earning_column + deduction_column
 
         employees = []
         employee_dict = {} # {emp_id(1): {id:value, staff_id:value, etc..}}

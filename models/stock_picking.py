@@ -42,17 +42,13 @@ class StockPicking(models.Model):
                         "product": product,
                         "description": product.description_sale or "",
                         "product_name":product.name or "",
+                        "product_category":product.categ_id.name or "",
                         "default_code": product.default_code or "",
-                        "delivery_order": set(),
                         "client_stock": 0,
                         "warehouses": {w.id: 0 for w in warehouse_list},
                     }
 
                 product_data[pid]["client_stock"] += owed_qty
-    
-                delivery_order = picking.name
-                if delivery_order:
-                    product_data[pid]["delivery_order"].add(delivery_order)
 
         for pid, pdata in product_data.items():
             product = pdata["product"]
@@ -124,8 +120,8 @@ class StockPicking(models.Model):
 
         headers = [
             "Product Name",
+            "Product Category",
             "Product Description",
-            "Delivery Orders",
         ]
 
         # add warehouse names (in the sorted sequence order)
@@ -148,7 +144,7 @@ class StockPicking(models.Model):
             # values in EXACT warehouse order
             warehouse_values = [pdata["warehouses"][w.id] for w in warehouse_list]
 
-            delivery_orders = ",".join(sorted(list(pdata["delivery_order"])))
+            # delivery_orders = ",".join(sorted(list(pdata["delivery_order"])))
             total_wh = sum(warehouse_values)
             net_balance = total_wh - pdata["client_stock"]
 
@@ -159,8 +155,8 @@ class StockPicking(models.Model):
 
             row_data = [
                 pdata["name"],
+                pdata["product_category"],
                 pdata["description"],
-                delivery_orders,
             ]
 
             # warehouse columns (exact order)
